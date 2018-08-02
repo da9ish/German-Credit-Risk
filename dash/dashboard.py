@@ -7,7 +7,7 @@ from dash.dependencies import Input, Output
 import plotly.graph_objs as go
 import plotly.figure_factory as ff
 from plotly import tools
-
+# from gunicorn import serve
 
 
 def load_data():
@@ -101,7 +101,7 @@ def count_plot(col_name):
                     'type': 'histogram'
                 }],
             'layout':{
-                'title':"Histogram Frequency Counts"
+                'title':"Count Plot"
             }
         }
 
@@ -127,6 +127,7 @@ def distribution_plot(col_name):
     group_labels = [col_name]
 
     fig = ff.create_distplot(hist_data, group_labels)
+    fig.layout.title = "Distribution Plot"
     return fig
 
 def qq_plot(col_name):
@@ -160,6 +161,8 @@ def qq_plot(col_name):
 
 df = load_data()
 app = dash.Dash()
+app.css.config.serve_locally = True
+app.scripts.config.serve_locally = True
 
 x = np.random.randn(1000)  
 hist_data = [x]
@@ -171,33 +174,40 @@ app.layout = html.Div([
     html.H1('Hello Dash'),
     dcc.Dropdown(
         options=[
+            {'label': 'Select Category', 'value': ''},
             {'label': 'Numerical Columns', 'value': 'NC'},
             {'label': 'Categorical Columns', 'value': 'CC'},
         ],
-        value='NC',
+        value='',
         id='category_dd'
     ),
     dcc.Dropdown(
         options=[
-            {'label': [], 'value': []}
+            {'label': 'Select Column', 'value': ''},
         ],
         id='col_dd',
-        value='duration'
+        value=''
     ),
-    dcc.Graph(
-        id='count-plot',
-    ),
-    dcc.Graph(
-        id='qq-plot',
-    ),
-    dcc.Graph(
+    html.Div([
+        dcc.Graph(
         id='dist-plot', 
-    ),
-    dcc.Graph(
-        id='box-plot', 
-        
-    ),
-])
+        ),
+        # dcc.Graph(
+        #     id='qq-plot',    
+        # ),
+        dcc.Graph(
+            id='box-plot',    
+        )
+    ], className='none', id='num_plots'),
+    html.Div([
+        dcc.Graph(
+            id='count-plot',
+        ),
+        dcc.Graph(
+            id='box-plot', 
+        ),
+    ], className='none', id='cat_plots')
+], className="container")
 
 
 @app.callback(
@@ -218,20 +228,41 @@ def get_columns(category):
             f_list.append({'label': i, 'value': i})
         return f_list
 
+# @app.callback(
+#     Output(component_id='qq-plot', component_property='figure'),
+#     [Input(component_id='col_dd', component_property='value')]
+# )
+# def show_qq_plot(col_name):
+#     return qq_plot(col_name)
+
+@app.callback(
+    Output(component_id='num_plots', component_property='className'),
+    [Input(component_id='category_dd', component_property='value')]
+)
+def set_display_block_num(category):
+    print(category)
+    if category == "NC":
+        return 'block'
+    else:
+        return 'none'
+
+@app.callback(
+    Output(component_id='cat_plots', component_property='className'),
+    [Input(component_id='category_dd', component_property='value')]
+)
+def set_display_block_cat(category):
+    print(category)
+    if category == "CC":
+        return 'block'
+    else:
+        return 'none'
+
 @app.callback(
     Output(component_id='count-plot', component_property='figure'),
     [Input(component_id='col_dd', component_property='value')]
 )
 def show_count_plot(col_name):
     return count_plot(col_name)
-
-@app.callback(
-    Output(component_id='qq-plot', component_property='figure'),
-    [Input(component_id='col_dd', component_property='value')]
-)
-def show_qq_plot(col_name):
-    return qq_plot(col_name)
-
 
 @app.callback(
     Output(component_id='dist-plot', component_property='figure'),
@@ -247,5 +278,10 @@ def show_dist_plot(col_name):
 def show_box_plot(col_name):
     return box_plot(col_name)
 
+@app.server.route('/static/<path:path>')
+def static_file(path):
+    static_folder = os.path.join(os.getcwd(), 'static')
+    return send_from_directory(static_folder, path)
+
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=True, host="0.0.0.0")
