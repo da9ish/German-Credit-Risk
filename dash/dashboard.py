@@ -144,6 +144,19 @@ def qq_plot(col_name):
         }
     }
 
+def dist_plot(y_pred, value):
+    trace1 = go.Histogram(x=y_pred[np.where(y_pred >= value)],)
+
+    trace2 = go.Histogram(x=y_pred[np.where(y_pred < value)])
+                
+    layout = go.Layout(title='Distribution Plot',
+                    xaxis=dict(title='Threshold'),
+                    yaxis=dict(title='Probabilities'))
+                
+    fig = go.Figure(data=[trace1, trace2], layout=layout)
+    return fig
+
+
 def roc_plot(fpr, tpr, roc_auc):
     lw = 2
     trace1 = go.Scatter(x=fpr, y=tpr, 
@@ -213,39 +226,40 @@ def log_reg(X_train, y_train, X_val, y_val, X_test, y_test):
     reg.fit(X_train, y_train.values.ravel())
     predict = reg.predict(X_val)
     acc = accuracy_score(y_val, predict)
-    print("Accuracy on Validation Set: " + str(acc))
+    # print("Accuracy on Validation Set: " + str(acc))
     predict = reg.predict(X_test)
     acc = accuracy_score(y_test, predict)
-    print("Accuracy on Test Set: " + str(acc))
+    # print("Accuracy on Test Set: " + str(acc))
     return reg
 
 def get_roc_metrics(model, X_test, y_test):
     probs = model.predict_proba(X_test)
     # y_pred = model.predict(X_test)
     preds = probs[:,1]
-    print(preds, y_test)
+    # print(preds, y_test)
     fpr, tpr, treshold = roc_curve(y_test, preds)
+    # print(treshold)
     roc_auc = auc(fpr, tpr)
-    return fpr, tpr, roc_auc
+    return fpr, tpr, roc_auc, preds
     
 df = load_data()
 df.target.replace({2: 0}, inplace=True)
 X_train, y_train, X_val, y_val, X_test, y_test = splitting(df)
-print("X Train: " + str(X_train.shape))
-print("Y Train: " + str(y_train.shape))
+# print("X Train: " + str(X_train.shape))
+# print("Y Train: " + str(y_train.shape))
 
-print("X Test: " + str(X_test.shape))
-print("Y Test: " + str(y_test.shape))
+# print("X Test: " + str(X_test.shape))
+# print("Y Test: " + str(y_test.shape))
 
-print("X Val: " + str(X_val.shape))
-print("Y Val: " + str(y_val.shape))
+# print("X Val: " + str(X_val.shape))
+# print("Y Val: " + str(y_val.shape))
 level_encoding_cols, one_hot_encoding_cols = get_encoding_cols(X_train)
 label_encoding(X_train, X_test, X_val)
 for i in one_hot_encoding_cols:
     one_hot_encoding(X_train, X_val, X_test, i)
 
 reg = log_reg(X_train, y_train, X_val, y_val, X_test, y_test)
-fpr, tpr, roc_auc = get_roc_metrics(reg, X_test, y_test)
+fpr, tpr, roc_auc, probs = get_roc_metrics(reg, X_test, y_test)
 roc_fig = (roc_plot(fpr, tpr, roc_auc))
 
 app = dash.Dash()
@@ -259,45 +273,69 @@ group_labels = ['distplot']
 fig = ff.create_distplot(hist_data, group_labels)
 
 app.layout = html.Div([
-    html.H1('German Credit Scoring'),
-    dcc.Dropdown(
-        options=[
-            {'label': 'Select Category', 'value': ''},
-            {'label': 'Numerical Columns', 'value': 'NC'},
-            {'label': 'Categorical Columns', 'value': 'CC'},
-        ],
-        value='',
-        id='category_dd'
-    ),
-    dcc.Dropdown(
-        options=[
-            {'label': 'Select Column', 'value': ''},
-        ],
-        id='col_dd',
-        value=''
-    ),
-    html.Div([
-        dcc.Graph(
-        id='dist-plot', 
-        ),
-        dcc.Graph(
-            id='box-plot',    
-        )
-    ], className='none', id='num_plots'),
-    html.Div([
-        dcc.Graph(
-            id='count-plot',
-        ),
-        dcc.Graph(
-            id='box-plot', 
-        ),
-    ], className='none', id='cat_plots'),
-    html.Div([
-        html.H2('ROC Curve'),
-        dcc.Graph(
-            id='roc-curve',
-            figure=roc_fig
-        )
+    html.H3('German Credit Scoring'),
+    dcc.Tabs(id="tabs", children=[
+        dcc.Tab(label='ROC Curve', children=[
+            html.Div([
+                dcc.Graph(
+                    id='roc-curve',
+                    figure=roc_fig
+                ),
+                html.P('Threshold', className='center'),
+                dcc.Slider(
+                    id='threshold',
+                    min=0,
+                    max=1,
+                    step=0.25,
+                    value=0,
+                    marks={i: '{}'.format(i) for i in [0, 0.25, 0.5, 0.75, 1]},
+                    className='range-field'
+                ),
+                html.Br(),
+                dcc.Graph(
+                    id='distribution-plot',
+                )
+
+            ], className='col s12')
+        ]),
+        dcc.Tab(label='EDA', children=[
+            html.Div([
+                dcc.Dropdown(
+                    options=[
+                        {'label': 'Select Category', 'value': ''},
+                        {'label': 'Numerical Columns', 'value': 'NC'},
+                        {'label': 'Categorical Columns', 'value': 'CC'},
+                    ],
+                    value='',
+                    id='category_dd',
+                    className='col l6 s12'
+                ),
+                dcc.Dropdown(
+                    options=[
+                        {'label': 'Select Column', 'value': ''},
+                    ],
+                    id='col_dd',
+                    value='',
+                    className='col l6 s12'
+                ),
+                html.Div([
+                    dcc.Graph(
+                    id='dist-plot', 
+                    ),
+                    dcc.Graph(
+                        id='box-plot',    
+                    )
+                ], className='none col s12', id='num_plots'),
+                html.Div([
+                    dcc.Graph(
+                        id='count-plot',
+                    ),
+                    dcc.Graph(
+                        id='box-plot', 
+                    ),
+                ], className='none col s12', id='cat_plots'),
+            ], className='col s12')
+        ])
     ])
 ], className="container")
 
@@ -332,7 +370,7 @@ def get_columns(category):
     [Input(component_id='category_dd', component_property='value')]
 )
 def set_display_block_num(category):
-    print(category)
+    # print(category)
     if category == "NC":
         return 'block'
     else:
@@ -343,7 +381,7 @@ def set_display_block_num(category):
     [Input(component_id='category_dd', component_property='value')]
 )
 def set_display_block_cat(category):
-    print(category)
+    # print(category)
     if category == "CC":
         return 'block'
     else:
@@ -370,10 +408,18 @@ def show_dist_plot(col_name):
 def show_box_plot(col_name):
     return box_plot(col_name)
 
+@app.callback(
+    Output(component_id='distribution-plot', component_property='figure'),
+    [Input(component_id='threshold', component_property='value')]
+)
+def show_qq_plot(value):
+    global probs
+    return dist_plot(probs, value)
+
 @app.server.route('/static/<path:path>')
 def static_file(path):
     static_folder = os.path.join(os.getcwd(), 'static')
     return send_from_directory(static_folder, path)
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=True, host='0.0.0.0')
